@@ -1,3 +1,38 @@
+/**
+ * Codex 历史会话访问模块：读取本地 Codex CLI 的历史对话记录。
+ *
+ * Codex（OpenAI 的本地 CLI Coding Agent）将会话历史存储在
+ * ~/.codex/sessions/ 和 ~/.codex/archived_sessions/ 目录下，
+ * 每个会话对应一个 JSONL 文件。
+ *
+ * 本模块让 ChatGPT 可以通过 MCP 工具查看这些历史会话，用于：
+ * - 了解某个任务之前 Codex 做过哪些尝试
+ * - 追踪 Codex 的实现进度和遇到的问题
+ * - 在多次会话之间保持上下文连续性
+ *
+ * 隐私模型（三级访问控制）：
+ *
+ * ```
+ * codexSessions="off"      → 不提供任何会话工具（默认）
+ * codexSessions="metadata" → 只能列出会话（标题、时间、项目路径）
+ *                            不能读取会话内容（可能含用户代码和私人信息）
+ * codexSessions="read"     → 可以读取完整会话 transcript
+ *                            用户必须显式选择此模式
+ * ```
+ *
+ * 为什么默认 "off"？
+ * - Codex 会话内容是用户私人工作记录，可能含有密钥、个人文件路径等
+ * - 即使是 "read" 模式，会话内容也会经过 redactSensitiveText 脱敏
+ * - 最小权限原则：不需要的能力默认不暴露
+ *
+ * 会话文件格式（JSONL）：
+ * - 每行是一个 JSON 对象，表示一条消息（user/assistant/tool_call 等）
+ * - 文件名包含 UUID，标题和项目信息在文件的头部和尾部提取
+ *
+ * 上游调用者：src/server.ts（codex_sessions、read_codex_session 工具 handler）
+ * 下游依赖：node:fs（createReadStream）、node:readline（逐行读取）
+ */
+
 import { createReadStream, statSync, type Dirent } from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";

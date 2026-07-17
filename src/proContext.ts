@@ -1,3 +1,36 @@
+/**
+ * Pro Context 构建模块：生成用于 AI 辅助编程的工作区上下文包。
+ *
+ * "Pro Context"是 CodexPro 的核心能力之一：将工作区的关键信息聚合为
+ * 一个结构化的 Markdown 文档（pro-context.md），供编程规划和代码审查使用。
+ *
+ * 与 codex_context（面向 Agent 的启动包）的区别：
+ * - codex_context：简洁，只包含 AGENTS.md + AI Bridge 状态 + Git 状态
+ *   适合 Agent 启动时快速了解任务
+ * - Pro Context：全面，包含选定文件的完整内容 + 变更文件 + 树 + diff
+ *   适合 ChatGPT 进行深入的代码审查和规划
+ *
+ * 内容组装策略：
+ * 1. 选定文件（selectedPaths）：用户明确指定的关键文件，总是包含
+ * 2. 变更文件（includeChangedFiles）：git status 中变更的文件
+ * 3. 重要文件（includeImportantFiles）：AGENTS.md、README.md、package.json 等
+ * 4. AI Bridge 状态（includeAiBridge）：.ai-bridge/ 中的协作状态
+ * 5. Git diff（includeDiff）：当前未暂存的变更
+ *
+ * 大小预算管理：
+ * - maxTotalBytes：整个 Pro Context 的总大小上限（默认 150KB）
+ * - maxFileBytes：单个文件的最大大小（默认 60KB）
+ * - maxFiles：最多包含的文件数（默认 30）
+ * - 达到限制时，跳过剩余文件并在结果中记录 filesSkipped
+ *
+ * Pro Context 的输出是一个 Markdown 文档，可以：
+ * 1. 直接通过工具返回给 ChatGPT（不保存到文件）
+ * 2. 写入 .ai-bridge/pro-context.md 作为 handoff 文档（export_pro_context）
+ *
+ * 上游调用者：src/server.ts（export_pro_context、show_changes 工具 handler）
+ * 下游依赖：src/fsOps.ts、src/gitOps.ts、src/workspaceOps.ts
+ */
+
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";

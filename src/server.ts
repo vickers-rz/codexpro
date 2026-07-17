@@ -1,3 +1,64 @@
+/**
+ * MCP Server 核心注册模块：CodexPro 的 MCP 工具中心。
+ *
+ * 本文件是 CodexPro 的神经中枢，负责：
+ * 1. 创建 MCP Server 实例（createCodexProServer）
+ * 2. 注册所有 MCP 工具（registerCodexTool）
+ * 3. 路由工具调用到对应的业务模块
+ * 4. 统一处理工具结果格式（textResult、errorResult）
+ * 5. 统一脱敏所有工具输出
+ *
+ * MCP 工具调用的完整生命周期：
+ *
+ * ```
+ * 客户端调用 tools/call {"name": "read", "arguments": {...}}
+ *       │
+ *       ▼
+ * registerToolCompat() — 包装 handler，添加 tagToolResult + logToolCall
+ *       │
+ *       ▼
+ * registerCodexTool() — 根据 toolMode 决定是否注册此工具
+ *       │
+ *       ▼
+ * 工具 handler（async function）— 验证参数、调用业务模块
+ *       │
+ *       ├─ 成功：textResult(text, structuredContent, _meta)
+ *       │         ↑ redactSensitiveText + redactStructured
+ *       └─ 失败：errorResult(error)
+ *                 ↑ redactSensitiveText
+ *       │
+ *       ▼
+ * tagToolResult() — 添加 codexpro_tool 和 codexpro_title 字段
+ *       │
+ *       ▼
+ * MCP Tool Result { content, structuredContent, _meta }
+ * ```
+ *
+ * Tool Result 的三个字段（MCP 协议规范）：
+ * - `content`：文本内容数组，供 AI 模型直接阅读（Markdown 格式）
+ * - `structuredContent`：结构化 JSON，供 MCP 客户端的 UI 组件使用
+ *   （如 Tool Card Widget，在 ChatGPT 中渲染为可视化卡片）
+ * - `_meta`：MCP 扩展元数据，包含 UI 渲染指令（openai/outputTemplate 等）
+ *
+ * Tool Set 模式（通过 CODEXPRO_TOOL_MODE 控制）：
+ * - "minimal"：最小工具集，共 9 个核心工具
+ * - "standard"：标准工具集，共 16 个工具（默认）
+ * - "full"：完整工具集，共 22 个工具（含 git_diff、codex_sessions 等）
+ *
+ * WorkspaceManager 的生命周期：
+ * - 每个不同的 (defaultRoot, allowedRoots, contextDir) 组合共享一个 WorkspaceManager
+ * - 通过 workspaceManagers Map 实现复用（跨请求保持状态）
+ * - HTTP Transport 下，多个并发会话共享同一 WorkspaceManager
+ *
+ * 安全说明：
+ * - 所有工具 handler 的路径参数都通过 PathGuard 校验
+ * - assertWriteToolAllowed 在写入操作前检查 writeMode 配置
+ * - 工具结果在返回前通过 redactSensitiveText/redactStructured 脱敏
+ *
+ * 上游调用者：src/stdio.ts（stdio 启动）、src/http.ts（HTTP 启动）
+ * 下游依赖：所有 *Ops.ts 业务模块
+ */
+
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";

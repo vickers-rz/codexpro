@@ -2747,6 +2747,7 @@ function printConnectorBlock(endpoint, token, options = {}) {
   const details = createConnectorDetails(endpoint, token, options.localBase ?? '');
   const { serverUrl } = details;
   const publicHttps = serverUrl.startsWith('https://');
+  const interactive = process.stdin.isTTY;
   const shouldCopy = options.copyUrl === true || (options.copyUrl !== false && publicHttps);
   const copied = shouldCopy ? copyToClipboard(serverUrl) : { ok: false, command: '' };
   const opened = options.openChatgpt ? openUrl(details.chatgptSettingsUrl) : false;
@@ -2788,8 +2789,13 @@ function printConnectorBlock(endpoint, token, options = {}) {
     console.log('  POST /mcp -> 2xx The MCP connection reached CodexPro successfully.');
     console.log('');
   }
-  console.log('Next: press Enter to open ChatGPT, paste the copied Server URL, choose Authentication: None.');
-  console.log('Keys: Enter open | c copy | o status | h help | q quit');
+  if (interactive) {
+    console.log('Next: press Enter to open ChatGPT, paste the copied Server URL, choose Authentication: None.');
+    console.log('Keys: Enter open | c copy | o status | h help | q quit');
+  } else {
+    console.log('Non-interactive launch detected. Keep this process running while CodexPro is in use.');
+    console.log('Stop it with SIGINT/SIGTERM or by ending the parent process.');
+  }
   return { ...details, copied, opened, mode, toolMode: options.toolMode ?? 'standard' };
 }
 
@@ -3631,7 +3637,23 @@ function writeControlPrompt() {
 }
 
 function runControlPanel(details, cleanup = cleanupChildren) {
-  if (!process.stdin.isTTY) return new Promise(() => {});
+  if (!process.stdin.isTTY) {
+    return new Promise((resolve) => {
+      if (spawnedChildren.size === 0) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      for (const child of spawnedChildren) child.once('exit', finish);
+    });
+  }
 
   writeControlPrompt();
 
@@ -3914,8 +3936,10 @@ async function main() {
   process.on('SIGINT', () => { cleanup(); process.exit(130); });
   process.on('SIGTERM', () => { cleanup(); process.exit(143); });
 
+  const localHealthHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
   const localBase = `http://${host}:${port}`;
-  await waitForHealth(`${localBase}/healthz`, token);
+  const localHealthBase = `http://${localHealthHost}:${port}`;
+  await waitForHealth(`${localHealthBase}/healthz`, token);
   statusLine('ok', `Local MCP ready at ${localBase}/mcp`);
   const runtimeOptions = {
     localBase,

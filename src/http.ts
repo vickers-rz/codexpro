@@ -1,4 +1,56 @@
 #!/usr/bin/env node
+/**
+ * HTTP Transport 启动入口：将 CodexPro MCP Server 通过 HTTP 暴露给远程客户端。
+ *
+ * 本文件实现了 MCP over HTTP（基于 MCP 2025-03-26 规范），
+ * 使 ChatGPT Connector、OpenCode 等网络客户端能够通过 HTTPS 访问 CodexPro。
+ *
+ * 网络暴露模型：
+ *
+ * ```
+ * 本地进程 [CodexPro HTTP Server :4444]
+ *       │
+ *       ▼ （可选）
+ * cloudflared tunnel ─── HTTPS ──→ 公网 URL（*.trycloudflare.com 或自定义域名）
+ *                                         │
+ *                               ChatGPT Connector 调用
+ * ```
+ *
+ * MCP over HTTP 协议细节（Streamable HTTP Transport）：
+ * - POST /mcp：发送 JSON-RPC 请求，接受 application/json 或 text/event-stream 响应
+ * - GET /mcp（带 Accept: text/event-stream）：订阅服务端事件流（SSE）
+ * - DELETE /mcp：关闭会话
+ * - Mcp-Session-Id 请求头：标识当前 MCP 会话
+ *
+ * 多会话管理：
+ * - 每个 ChatGPT 会话对应一个独立的 MCP Server 实例
+ * - 会话通过 Mcp-Session-Id 标识，存储在 Map<sessionId, transport>
+ * - 未知 session ID 的请求返回 404（客户端需要重新初始化）
+ * - 孤立会话（客户端断开后未 DELETE）有 TTL 清理机制
+ *
+ * 认证模型（多层防御）：
+ * 1. HTTP Bearer Token（requireHttpToken=true 时）：
+ *    - 通过 timingSafeEqual 比较（防止时序攻击）
+ *    - token 来自 CODEXPRO_AUTH_TOKEN 环境变量或 --auth-token 参数
+ * 2. 本地回环豁免：127.0.0.1/::1 的请求默认不需要 token
+ *    （只有本地进程能访问）
+ * 3. cloudflared 隧道：提供 HTTPS 加密传输
+ *    （隧道本身不提供认证，需结合 Bearer Token 使用）
+ *
+ * 工作区配置持久化（WorkspaceProfile）：
+ * - 每个工作区根目录对应一个 .codexpro/profile.json
+ * - 存储 connectMode（token/oauth）、tunnelMode、最后连接的端口等
+ * - 用于 ChatGPT Connector 的配置 UI 显示当前连接状态
+ *
+ * OAuth 集成（connectMode="oauth" 时）：
+ * - 通过 /oauth/token 端点实现简单的本地 OAuth 流程
+ * - 生成的 access token 等同于 authToken，仅用于本地会话
+ * - 不是真正的 OAuth 提供商：没有 refresh token、没有外部身份验证
+ *   只是将 Bearer Token 认证包装为 OAuth 兼容接口
+ *
+ * 上游：codexpro.mjs 启动脚本
+ * 下游：src/config.ts、src/server.ts（createCodexProServer）、src/profileStore.ts
+ */
 import { randomUUID } from "node:crypto";
 import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
