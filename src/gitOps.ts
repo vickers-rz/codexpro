@@ -43,7 +43,7 @@ export function gitRuntimeStatus(config: CodexProConfig): GitRuntimeStatus {
   const result = spawnSync(info.executable, ["--version"], {
     encoding: "utf8",
     maxBuffer: config.maxOutputBytes,
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NO_COLOR: "1", LC_ALL: "C", LANG: "C" },
     windowsHide: true
   });
   if (result.error || result.status !== 0) {
@@ -83,7 +83,7 @@ function nearestGitContext(config: CodexProConfig, guard: PathGuard, workspace: 
     cwd: probe,
     encoding: "utf8",
     maxBuffer: config.maxOutputBytes,
-    env: { ...process.env, NO_COLOR: "1" }
+    env: { ...process.env, NO_COLOR: "1", LC_ALL: "C", LANG: "C" }
   });
   if (result.error || result.status !== 0) return { ...defaultGitContext(workspace), targetPath: resolved.relPath };
   const rootText = String(result.stdout ?? "").trim();
@@ -126,7 +126,7 @@ function runGit(config: CodexProConfig, workspace: Workspace, args: string[], ma
     cwd: context.cwd,
     encoding: "utf8",
     maxBuffer: maxOutputBytes,
-    env: { ...process.env, NO_COLOR: "1" }
+    env: { ...process.env, NO_COLOR: "1", LC_ALL: "C", LANG: "C" }
   });
   if (result.error) {
     return `git unavailable or failed: ${result.error.message}`;
@@ -134,7 +134,10 @@ function runGit(config: CodexProConfig, workspace: Workspace, args: string[], ma
   if (result.status !== 0) {
     const stderr = result.stderr?.trim() || "";
     const stdout = result.stdout?.trim() || "";
-    return stderr || stdout || `git exited with status ${result.status}`;
+    const detail = stderr || stdout;
+    return detail
+      ? `git exited with status ${result.status}: ${detail}`
+      : `git exited with status ${result.status}`;
   }
   const output = result.stdout.trim() || "(no output)";
   return redactSensitiveText(rewritePaths ? rewriteStatusPaths(output, context, workspace) : output);

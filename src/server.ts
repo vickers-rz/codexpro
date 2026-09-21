@@ -692,7 +692,7 @@ async function applyWorkspacePatch(
       input: patch,
       encoding: "utf8",
       maxBuffer: config.maxOutputBytes,
-      env: { ...process.env, NO_COLOR: "1" }
+      env: { ...process.env, NO_COLOR: "1", LC_ALL: "C", LANG: "C" }
     });
     const checkOutput = [check.stdout?.trim(), check.stderr?.trim()].filter(Boolean).join("\n");
     if (check.error || check.status !== 0 || /(?:^|\n)Skipped patch\b/i.test(checkOutput)) {
@@ -704,7 +704,7 @@ async function applyWorkspacePatch(
       input: patch,
       encoding: "utf8",
       maxBuffer: config.maxOutputBytes,
-      env: { ...process.env, NO_COLOR: "1" }
+      env: { ...process.env, NO_COLOR: "1", LC_ALL: "C", LANG: "C" }
     });
     const appliedOutput = [applied.stdout?.trim(), applied.stderr?.trim()].filter(Boolean).join("\n");
     if (applied.error || applied.status !== 0 || /(?:^|\n)Skipped patch\b/i.test(appliedOutput)) {
